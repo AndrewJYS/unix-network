@@ -12,7 +12,7 @@ The following scenario occurs when a TCP connection is established:
 
 4.The **client** must **acknowledge** the server’s SYN.  
 
-![tcp1](/imgs/tcp1.png)
+![tcp1](/imgs/tcp1.jpg)
 
 ## TCP Connection Termination  
 
