@@ -12,8 +12,6 @@ The following scenario occurs when a TCP connection is established:
 
 4.The **client** must **acknowledge** the server’s SYN.  
 
-![tcp1](/imgs/tcp1.jpg)
-
 ## TCP Connection Termination  
 
 While it takes three segments to establish a connection, it takes four to terminate a connection.
@@ -25,3 +23,5 @@ While it takes three segments to establish a connection, it takes four to termin
 3.Sometime later, the application that received the end-of-file will close its socket. This causes its TCP to send a FIN.  
 
 4.The TCP on the system that receives this final FIN (the end that did the active close) acknowledges the FIN.  
+
+**copied from UNP, chapter 2**
