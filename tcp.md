@@ -23,5 +23,5 @@ While it takes three segments to establish a connection, it takes four to termin
 3.Sometime later, the application that received the end-of-file will close its socket. This causes its TCP to send a FIN.  
 
 4.The TCP on the system that receives this final FIN (the end that did the active close) acknowledges the FIN.  
-
-**copied from UNP, chapter 2**
+  
+**copied from UNP, chapter 2**.

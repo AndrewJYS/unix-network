@@ -33,7 +33,9 @@ int main()
     listen(lfd, 128);
 
     // accept
-    int cfd = accept(lfd, NULL, NULL);
+    struct sockaddr_in clnt;
+    socklen_t len = sizeof(clnt);
+    int cfd = accept(lfd, (struct sockaddr*)&clnt, &len);
     printf("lfd== %d, cfd== %d\n", lfd, cfd);
 
     // read and write
