@@ -1,4 +1,4 @@
-# select-poll  
+# select-epoll  
 
 ## select  
 
@@ -154,5 +154,206 @@ int main()
     Close(lfd);
 
     return 0;
+}
+```
+
+## epoll
+
+```c
+#include <sys/epoll.h>
+
+int epoll_create(int size);
+
+//epoll_create创建一棵epoll树，返回一个树的根节点，size必须传一个大于0的数 
+//返回一个文件描述符，这个文件描述符就表示epoll树的根节点
+```
+
+```c
+#include <sys/epoll.h>
+
+int epoll_ctl(int epfd, int op, int fd, struct epoll_event * event);
+
+//将fd上epoll树，从树上删除和修改
+//成功时返回0, 失败时返回－1 。
+```
+
+epfd：epoll树的树根节点。  
+op：用千指定监视对象的添加、删除或更改等操作。  
+fd：需要注册的监视对象文件描述符。  
+event：监视对象的事件类型。  
+
+op的选项如下：  
+EPOLL_CTL_ADD: 上树操作。  
+EPOLL_CTL_DEL: 从树上删除节点。  
+EPOLL_CTL_MOD: 修改。  
+
+epoll_event的结构如下：  
+
+```c
+typedef union epoll_data {
+    void        *ptr;
+    int          fd;
+    uint32_t     u32;
+    uint64_t     u64;
+} epoll_data_t;
+
+struct epoll_event {
+    uint32_t     events;      /* Epoll events */
+    epoll_data_t data;        /* User data variable */
+};
+```
+
+epoll_event中events的选项如下：  
+EPOLLIN：可读事件  
+EPOLLOUT：可写事件  
+EPOLLERR：异常事件  
+
+epoll_ctl的示例如下：  
+
+```c
+struct epoll_event ev;
+ev.events = EPOLLIN;
+ev.data.fd = fd;
+epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
+```
+
+```c
+#include <sys/epoll.h>
+
+int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
+
+//委托内核监控epoll树的事件节点
+//成功时返回发生事件的文件描述符数，失败时返回－1
+```
+
+epfd：epoll树根  
+events：传出参数，结构体数组  
+maxevents：events数组大小  
+timeout:  
+
++ \-1 表示阻塞  
++ 0 表示不阻塞
++ \>0 表示阻塞超时时长  
+
+示例如下：  
+
+```c
+#include "wrap.h"
+#include <ctype.h>
+#include <sys/epoll.h>
+
+int main()
+{
+    int ret;
+    int n;
+    int i;
+    int k;
+    int nready;
+    int lfd;
+    int cfd;
+    int sockfd;
+    char buf[1024];
+    socklen_t socklen;
+    struct sockaddr_in servaddr;
+    struct epoll_event ev;
+    struct epoll_event events[1024];
+
+    // create socket
+    lfd = Socket(AF_INET, SOCK_STREAM, 0);
+
+    // reuse port
+    int opt = 1;
+    setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(int));
+
+    // bind
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr.sin_port = htons(8888);
+    Bind(lfd, (struct sockaddr* )&servaddr, sizeof(struct sockaddr_in));
+
+    //listen
+    Listen(lfd, 128);
+
+    // create an epoll tree
+    int epfd;
+    epfd = epoll_create(1024);
+    if (epfd < 0) 
+    {
+        perror("create epoll error");
+        return -1;
+    }
+
+    // put lfd onto epoll tree
+    ev.data.fd = lfd;
+    ev.events = EPOLLIN;
+    epoll_ctl(epfd, EPOLL_CTL_ADD, lfd, &ev);
+
+    while (1) 
+    {
+        nready = epoll_wait(epfd, events, 1024, -1);
+        if (nready < 0)
+        {
+            perror("epoll_wait error");
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            break;
+        }
+
+        for (i = 0; i < nready; i++)
+        {
+            sockfd = events[i].data.fd;
+
+            // new client connection
+            if (sockfd == lfd)
+            {
+                cfd = Accept(lfd, NULL, NULL);
+                // put cfd into epoll tree
+                ev.data.fd = cfd;
+                ev.events = EPOLLIN;
+                epoll_ctl(epfd, EPOLL_CTL_ADD, cfd, &ev);
+                continue;
+            }
+
+            // data from client
+            memset(buf, 0x00, sizeof(buf));
+            n = Read(sockfd, buf, sizeof(buf));
+            if (n <= 0)
+            {
+                Close(sockfd);
+                //delete sockfd from epoll tree
+                epoll_ctl(epfd, EPOLL_CTL_DEL, sockfd, NULL);
+            }
+            else
+            {
+                for (k = 0; k < n; ++k)
+                {
+                    buf[k] = toupper(buf[k]);
+                }
+                Write(sockfd, buf, n);
+            }
+        }
+    }
+
+    Close(lfd);
+    return 0;
+}
+```
+
+### epoll的水平模式和边缘模式  
+
+水平触发模式(LT)：高电平代表1，只要缓冲区有数据，就一直通知，epoll默认是LT模式  
+边缘触发模式：电平有变化就代表1，缓冲区中有数据只会通知一次，之后再有数据才会通知（如果读数据的时候没有读完，则剩余的数据不会再次通知，直到有新的数据到来）  
+
+```c
+if (sockfd == lfd)
+{
+    cfd = Accept(lfd, NULL, NULL);
+    // put cfd into epoll tree
+    ev.data.fd = cfd;
+    ev.events = EPOLLIN | EPOLLET;
+    epoll_ctl(epfd, EPOLL_CTL_ADD, cfd, &ev);
+    continue;
 }
 ```
